@@ -2,6 +2,7 @@ import os
 import io
 import tempfile
 import base64
+import random
 import streamlit as st
 from groq import Groq
 from gtts import gTTS
@@ -59,14 +60,35 @@ def get_agent():
         verbose=False,
     )
 
-# ── Prompts ───────────────────────────────────────────────────────────────────
-PROMPTS = [
+# ── Large topic pool — 5 picked randomly each session ────────────────────────
+ALL_PROMPTS = [
     "Tell me what you did this morning.",
     "Describe your favourite food.",
     "Tell me about your school or workplace.",
     "What do you like to do on weekends?",
     "Describe a place you would like to visit.",
+    "Tell me about a hobby you enjoy.",
+    "Describe your neighbourhood.",
+    "Tell me about a movie or show you watched recently.",
+    "What did you have for dinner last night?",
+    "Tell me about someone important in your life.",
+    "Describe your daily morning routine.",
+    "What do you usually do after work or school?",
+    "Tell me about a trip you took.",
+    "Describe your favourite season and why you like it.",
+    "What kind of music do you enjoy?",
+    "Tell me about a goal you have for this year.",
+    "Describe a typical weekend for you.",
+    "What is something you are good at?",
+    "Tell me about a challenge you faced recently.",
+    "Describe your favourite place to relax.",
+    "What do you usually do when you feel stressed?",
+    "Tell me about a book you read or are reading.",
+    "Describe your best friend.",
+    "What is something new you learned recently?",
+    "Tell me about your hometown.",
 ]
+QUESTIONS_PER_SESSION = 5
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def transcribe(audio_bytes: bytes) -> str:
@@ -113,6 +135,9 @@ def autoplay_audio(b64: str):
     )
 
 # ── Session state ─────────────────────────────────────────────────────────────
+if "prompts" not in st.session_state:
+    # Pick a fresh random set of questions for this session
+    st.session_state.prompts = random.sample(ALL_PROMPTS, QUESTIONS_PER_SESSION)
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "prompt_index" not in st.session_state:
@@ -123,6 +148,9 @@ if "audio_enabled" not in st.session_state:
     st.session_state.audio_enabled = True
 if "last_played_index" not in st.session_state:
     st.session_state.last_played_index = -1
+if "feedback_played" not in st.session_state:
+    # True = feedback has been spoken, safe to show next question
+    st.session_state.feedback_played = True
 
 # ── Audio toggle ──────────────────────────────────────────────────────────────
 col_tog, _ = st.columns([1, 5])
@@ -134,12 +162,12 @@ with col_tog:
 
 st.divider()
 
-# ── Ask the current question ──────────────────────────────────────────────────
+# ── Ask the current question (only after feedback has been spoken) ─────────────
 current_index = st.session_state.prompt_index
-all_done = current_index >= len(PROMPTS)
+all_done = current_index >= QUESTIONS_PER_SESSION
 
-if not all_done and not st.session_state.question_asked:
-    question = PROMPTS[current_index]
+if not all_done and not st.session_state.question_asked and st.session_state.feedback_played:
+    question = st.session_state.prompts[current_index]
     st.session_state.messages.append({
         "role": "assistant",
         "content": question,
@@ -152,27 +180,27 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# ── Autoplay unplayed assistant messages ──────────────────────────────────────
+# ── Autoplay unplayed assistant messages one at a time ────────────────────────
 if st.session_state.audio_enabled:
     for i, msg in enumerate(st.session_state.messages):
         if i > st.session_state.last_played_index and msg["role"] == "assistant" and "audio_b64" in msg:
             autoplay_audio(msg["audio_b64"])
             st.session_state.last_played_index = i
+            break  # ← play ONE message per rerun, prevents overlap
 
 # ── All done ──────────────────────────────────────────────────────────────────
 if all_done:
-    st.success("✅ Great practice! You've completed all 5 questions.")
-    if st.button("Start over"):
-        st.session_state.messages = []
-        st.session_state.prompt_index = 0
-        st.session_state.question_asked = False
-        st.session_state.last_played_index = -1
+    st.success("✅ Great practice! You've completed all questions.")
+    if st.button("Start over with new questions"):
+        for key in ["messages", "prompt_index", "question_asked",
+                    "last_played_index", "feedback_played", "prompts"]:
+            del st.session_state[key]
         st.rerun()
     st.stop()
 
 # ── Progress ──────────────────────────────────────────────────────────────────
-st.caption(f"Question {current_index + 1} of {len(PROMPTS)}")
-st.progress(current_index / len(PROMPTS))
+st.caption(f"Question {current_index + 1} of {QUESTIONS_PER_SESSION}")
+st.progress(current_index / QUESTIONS_PER_SESSION)
 
 # ── Input ─────────────────────────────────────────────────────────────────────
 st.markdown("---")
@@ -201,9 +229,18 @@ def handle_answer(user_text: str):
         "content": feedback,
         "audio_b64": make_audio_b64(feedback),
     })
+    # Mark feedback as not yet played — next question waits until this rerun plays it
+    st.session_state.feedback_played = False
     st.session_state.prompt_index += 1
     st.session_state.question_asked = False
     st.rerun()
+
+# After feedback has been spoken (last_played_index caught up), mark it done
+# and trigger a rerun to load the next question
+if not st.session_state.feedback_played:
+    if st.session_state.messages and st.session_state.last_played_index >= len(st.session_state.messages) - 1:
+        st.session_state.feedback_played = True
+        st.rerun()
 
 if audio_bytes and len(audio_bytes) > 1000:
     with st.spinner("Transcribing..."):
