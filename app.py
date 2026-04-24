@@ -24,21 +24,21 @@ MAX_TURNS = 5
 
 # ── Topics ────────────────────────────────────────────────────────────────────
 TOPICS = [
-    {"name": "At a coffee shop",         "opening": "I just tried that new café on the corner. Have you been there yet?"},
-    {"name": "Weekend plans",            "opening": "So what are you up to this weekend? Got anything fun planned?"},
-    {"name": "Talking about the weather","opening": "Can you believe how hot it's been lately? Is it like this where you live?"},
-    {"name": "Recommending a restaurant","opening": "I had the most amazing dinner last night. Do you have a favourite restaurant around here?"},
-    {"name": "Talking about a movie",    "opening": "I watched a really good movie last night. Have you seen anything good recently?"},
-    {"name": "Monday morning small talk","opening": "Hey, how was your weekend? Do anything interesting?"},
-    {"name": "Talking about a hobby",    "opening": "I've been trying to get into running lately. Do you have any hobbies you're really into?"},
-    {"name": "Planning a trip",          "opening": "I'm thinking about taking a trip somewhere next month. Have you travelled anywhere nice lately?"},
-    {"name": "Talking about food",       "opening": "I've been trying to cook more at home. Do you enjoy cooking?"},
-    {"name": "Catching up with a friend","opening": "It feels like we haven't talked in ages! What have you been up to lately?"},
-    {"name": "Talking about work",       "opening": "Work has been so busy for me lately. How about you — are things busy at your end?"},
-    {"name": "Talking about a TV show",  "opening": "I just finished watching a really good series. Are you watching anything good right now?"},
-    {"name": "Shopping",                 "opening": "I went to the mall yesterday and it was packed! Do you enjoy shopping?"},
-    {"name": "Health and exercise",      "opening": "I've been trying to go to the gym more regularly. Do you exercise much?"},
-    {"name": "Talking about pets",       "opening": "My neighbour just got a puppy and it's so cute! Do you have any pets?"},
+    {"name": "At a coffee shop",          "opening": "I just tried that new café on the corner. Have you been there yet?"},
+    {"name": "Weekend plans",             "opening": "So what are you up to this weekend? Got anything fun planned?"},
+    {"name": "Talking about the weather", "opening": "Can you believe how hot it's been lately? Is it like this where you live?"},
+    {"name": "Recommending a restaurant", "opening": "I had the most amazing dinner last night. Do you have a favourite restaurant around here?"},
+    {"name": "Talking about a movie",     "opening": "I watched a really good movie last night. Have you seen anything good recently?"},
+    {"name": "Monday morning small talk", "opening": "Hey, how was your weekend? Do anything interesting?"},
+    {"name": "Talking about a hobby",     "opening": "I've been trying to get into running lately. Do you have any hobbies you're really into?"},
+    {"name": "Planning a trip",           "opening": "I'm thinking about taking a trip somewhere next month. Have you travelled anywhere nice lately?"},
+    {"name": "Talking about food",        "opening": "I've been trying to cook more at home. Do you enjoy cooking?"},
+    {"name": "Catching up with a friend", "opening": "It feels like we haven't talked in ages! What have you been up to lately?"},
+    {"name": "Talking about work",        "opening": "Work has been so busy for me lately. How about you — are things busy at your end?"},
+    {"name": "Talking about a TV show",   "opening": "I just finished watching a really good series. Are you watching anything good right now?"},
+    {"name": "Shopping",                  "opening": "I went to the mall yesterday and it was packed! Do you enjoy shopping?"},
+    {"name": "Health and exercise",       "opening": "I've been trying to go to the gym more regularly. Do you exercise much?"},
+    {"name": "Talking about pets",        "opening": "My neighbour just got a puppy and it's so cute! Do you have any pets?"},
 ]
 
 # ── Agent ─────────────────────────────────────────────────────────────────────
@@ -111,14 +111,15 @@ def make_audio_b64(text: str) -> str:
     return base64.b64encode(buf.read()).decode()
 
 def autoplay_audio(b64: str):
+    """Play a single audio clip."""
     st.markdown(
         f'<audio autoplay style="display:none">'
         f'<source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>',
         unsafe_allow_html=True,
     )
 
-def play_sequential(b64_list: list[str]):
-    """Inject JS to play a list of audio clips one after another."""
+def play_sequential(b64_list: list):
+    """Play a list of audio clips one after another using JS onended chaining."""
     clips_js = ", ".join(f'"{b}"' for b in b64_list)
     st.markdown(f"""
     <script>
@@ -128,7 +129,8 @@ def play_sequential(b64_list: list[str]):
         function playNext() {{
             if (i >= clips.length) return;
             const audio = new Audio('data:audio/mp3;base64,' + clips[i]);
-            audio.onended = function() {{ i++; playNext(); }};
+            i++;
+            audio.onended = playNext;
             audio.play();
         }}
         playNext();
@@ -137,15 +139,14 @@ def play_sequential(b64_list: list[str]):
     """, unsafe_allow_html=True)
 
 # ── Session state ─────────────────────────────────────────────────────────────
-if "topic"          not in st.session_state: st.session_state.topic          = random.choice(TOPICS)
-if "messages"       not in st.session_state: st.session_state.messages       = []
-if "comments"       not in st.session_state: st.session_state.comments       = []  # list of comment strings
-if "turn_count"     not in st.session_state: st.session_state.turn_count     = 0
-if "audio_enabled"  not in st.session_state: st.session_state.audio_enabled  = True
-if "pending_audio"  not in st.session_state: st.session_state.pending_audio  = None
-if "started"        not in st.session_state: st.session_state.started        = False
-if "finished"       not in st.session_state: st.session_state.finished       = False
-if "playing_review" not in st.session_state: st.session_state.playing_review = False
+if "topic"         not in st.session_state: st.session_state.topic         = random.choice(TOPICS)
+if "messages"      not in st.session_state: st.session_state.messages      = []
+if "comments"      not in st.session_state: st.session_state.comments      = []  # plain text, for review playback
+if "turn_count"    not in st.session_state: st.session_state.turn_count    = 0
+if "audio_enabled" not in st.session_state: st.session_state.audio_enabled = True
+if "pending_audio" not in st.session_state: st.session_state.pending_audio = None
+if "started"       not in st.session_state: st.session_state.started       = False
+if "finished"      not in st.session_state: st.session_state.finished      = False
 
 topic = st.session_state.topic
 
@@ -173,7 +174,7 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# ── Play single pending audio ─────────────────────────────────────────────────
+# ── Play single pending audio (questions only) ────────────────────────────────
 if st.session_state.audio_enabled and st.session_state.pending_audio:
     autoplay_audio(st.session_state.pending_audio)
     st.session_state.pending_audio = None
@@ -183,20 +184,20 @@ st.caption(f"Turn {min(st.session_state.turn_count + 1, MAX_TURNS)} of {MAX_TURN
 st.progress(st.session_state.turn_count / MAX_TURNS)
 st.markdown("---")
 
-# ── FINISHED: show buttons and optionally play review audio ───────────────────
+# ── FINISHED: review buttons ──────────────────────────────────────────────────
 if st.session_state.finished:
-    st.info("Scroll up to read your fluency comments 💬")
-
+    st.info("💬 Scroll up to read your fluency comments, or press the button to hear them.")
     col_a, col_b = st.columns(2)
     with col_a:
         if st.button("🔊 Hear my feedback", use_container_width=True, type="primary"):
-            if st.session_state.audio_enabled and st.session_state.comments:
+            if st.session_state.comments:
+                # Generate audio for all comments and play sequentially
                 comment_audios = [make_audio_b64(c) for c in st.session_state.comments]
                 play_sequential(comment_audios)
     with col_b:
         if st.button("🔄 New topic", use_container_width=True):
             for key in ["topic", "messages", "comments", "turn_count",
-                        "pending_audio", "started", "finished", "playing_review"]:
+                        "pending_audio", "started", "finished"]:
                 del st.session_state[key]
             st.rerun()
     st.stop()
@@ -229,7 +230,7 @@ def handle_answer(user_text: str):
     # Save comment text for review playback
     st.session_state.comments.append(comment)
 
-    # Show comment as text in chat
+    # Show comment as text in chat (no audio during conversation)
     st.session_state.messages.append({"role": "assistant", "content": f"💬 {comment}"})
 
     if is_last:
