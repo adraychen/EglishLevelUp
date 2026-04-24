@@ -111,7 +111,6 @@ def make_audio_b64(text: str) -> str:
     return base64.b64encode(buf.read()).decode()
 
 def autoplay_audio(b64: str):
-    """Play a single audio clip."""
     st.markdown(
         f'<audio autoplay style="display:none">'
         f'<source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>',
@@ -119,7 +118,7 @@ def autoplay_audio(b64: str):
     )
 
 def play_sequential(b64_list: list):
-    """Play a list of audio clips one after another using JS onended chaining."""
+    """Play a list of audio clips one after another — each waits for the previous to finish."""
     clips_js = ", ".join(f'"{b}"' for b in b64_list)
     st.markdown(f"""
     <script>
@@ -141,7 +140,7 @@ def play_sequential(b64_list: list):
 # ── Session state ─────────────────────────────────────────────────────────────
 if "topic"         not in st.session_state: st.session_state.topic         = random.choice(TOPICS)
 if "messages"      not in st.session_state: st.session_state.messages      = []
-if "comments"      not in st.session_state: st.session_state.comments      = []  # plain text, for review playback
+if "comments"      not in st.session_state: st.session_state.comments      = []
 if "turn_count"    not in st.session_state: st.session_state.turn_count    = 0
 if "audio_enabled" not in st.session_state: st.session_state.audio_enabled = True
 if "pending_audio" not in st.session_state: st.session_state.pending_audio = None
@@ -174,33 +173,33 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# ── Play single pending audio (questions only) ────────────────────────────────
+# ── Play single pending audio (questions only during conversation) ─────────────
 if st.session_state.audio_enabled and st.session_state.pending_audio:
     autoplay_audio(st.session_state.pending_audio)
     st.session_state.pending_audio = None
+
+# ── FINISHED: auto-speak all comments, then show New Topic button ─────────────
+if st.session_state.finished:
+    st.info("💬 Scroll up to read your fluency comments while you listen.")
+    if st.session_state.audio_enabled and st.session_state.comments:
+        # Build intro + each comment as a numbered audio clip and play all sequentially
+        intro = "Here are your fluency comments."
+        clips = [make_audio_b64(intro)]
+        for i, comment in enumerate(st.session_state.comments, 1):
+            clips.append(make_audio_b64(f"Comment {i}. {comment}"))
+        play_sequential(clips)
+
+    if st.button("🔄 New topic", type="primary"):
+        for key in ["topic", "messages", "comments", "turn_count",
+                    "pending_audio", "started", "finished"]:
+            del st.session_state[key]
+        st.rerun()
+    st.stop()
 
 # ── Progress ──────────────────────────────────────────────────────────────────
 st.caption(f"Turn {min(st.session_state.turn_count + 1, MAX_TURNS)} of {MAX_TURNS}")
 st.progress(st.session_state.turn_count / MAX_TURNS)
 st.markdown("---")
-
-# ── FINISHED: review buttons ──────────────────────────────────────────────────
-if st.session_state.finished:
-    st.info("💬 Scroll up to read your fluency comments, or press the button to hear them.")
-    col_a, col_b = st.columns(2)
-    with col_a:
-        if st.button("🔊 Hear my feedback", use_container_width=True, type="primary"):
-            if st.session_state.comments:
-                # Generate audio for all comments and play sequentially
-                comment_audios = [make_audio_b64(c) for c in st.session_state.comments]
-                play_sequential(comment_audios)
-    with col_b:
-        if st.button("🔄 New topic", use_container_width=True):
-            for key in ["topic", "messages", "comments", "turn_count",
-                        "pending_audio", "started", "finished"]:
-                del st.session_state[key]
-            st.rerun()
-    st.stop()
 
 # ── Input ─────────────────────────────────────────────────────────────────────
 col1, col2 = st.columns([1, 3])
@@ -227,16 +226,12 @@ def handle_answer(user_text: str):
     with st.spinner("Thinking..."):
         comment, question = get_response(user_text, st.session_state.messages, topic["name"])
 
-    # Save comment text for review playback
     st.session_state.comments.append(comment)
-
-    # Show comment as text in chat (no audio during conversation)
     st.session_state.messages.append({"role": "assistant", "content": f"💬 {comment}"})
 
     if is_last:
-        closing = "Great conversation! Press 'Hear my feedback' to listen to your fluency comments."
+        closing = "Great conversation! Let me give you some feedback now."
         st.session_state.messages.append({"role": "assistant", "content": closing})
-        st.session_state.pending_audio = make_audio_b64(closing)
         st.session_state.finished = True
     else:
         if question:
